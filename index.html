@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Planificateur tactile</title>
+
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+display:flex;
+height:100vh;
+background:#ececec;
+}
+
+/* palette */
+
+#palette{
+width:220px;
+background:#2c2c2c;
+color:white;
+padding:10px;
+overflow:auto;
+}
+
+.palette-item{
+width:60px;
+height:60px;
+margin:10px;
+display:flex;
+align-items:center;
+justify-content:center;
+cursor:grab;
+background:linear-gradient(45deg,#d2a679,#c18a5c,#a56a3f);
+border:2px solid #5c3a1e;
+font-size:28px;
+}
+
+/* zone principale */
+
+#workspace{
+flex:1;
+display:flex;
+flex-direction:column;
+}
+
+#toolbar{
+background:#444;
+color:white;
+padding:10px;
+}
+
+#toolbar button{
+margin-right:6px;
+padding:6px 10px;
+}
+
+/* plan */
+
+#plan{
+flex:1;
+position:relative;
+    touch-action:none;
+background:
+linear-gradient(#ddd 1px, transparent 1px),
+linear-gradient(90deg,#ddd 1px, transparent 1px);
+background-size:40px 40px;
+}
+
+/* formes */
+
+.forme{
+position:absolute;
+width:60px;
+height:60px;
+display:flex;
+align-items:center;
+justify-content:center;
+cursor:grab;
+background:linear-gradient(45deg,#d2a679,#c18a5c,#a56a3f);
+border:2px solid #6b3e1f;
+font-size:26px;
+user-select:none;
+transform-origin:center;
+}
+
+.rond{border-radius:50%}
+
+.rectangle{
+width:90px;
+height:50px;
+}
+
+.triangle{
+width:0;
+height:0;
+border-left:30px solid transparent;
+border-right:30px solid transparent;
+border-bottom:60px solid #c18a5c;
+background:none;
+border:linear;
+}
+
+.tournesol{
+background:none;
+border:none;
+font-size:40px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="palette">
+
+<h3>Formes</h3>
+
+<div class="palette-item rond" draggable="true" data-type="rond"></div>
+
+<div class="palette-item rectangle" draggable="true" data-type="rectangle"></div>
+
+<div class="palette-item triangle" draggable="true" data-type="triangle"></div>
+
+<div class="palette-item" draggable="true" data-type="croix">✚</div>
+
+<div class="palette-item tournesol" draggable="true" data-type="tournesol">🌻</div>
+
+</div>
+
+<div id="workspace">
+
+<div id="toolbar">
+
+<button onclick="rotatePiece()">🔄 Tourner</button>
+<button onclick="resizePiece(1.1)">➕ Agrandir</button>
+<button onclick="resizePiece(0.9)">➖ Réduire</button>
+
+<button onclick="savePlan()">💾 Sauvegarder</button>
+<button onclick="loadPlan()">📂 Charger</button>
+<button onclick="exportImage()">📸 Export image</button>
+
+</div>
+
+<div id="plan"></div>
+
+</div>
+
+<script>
+
+const plan=document.getElementById("plan")
+
+let dragType=null
+let selected=null
+let active=null
+let offsetX=0
+let offsetY=0
+
+/* palette drag */
+
+document.querySelectorAll(".palette-item").forEach(item=>{
+item.addEventListener("dragstart",e=>{
+dragType=item.dataset.type
+})
+})
+
+plan.addEventListener("dragover",e=>e.preventDefault())
+
+plan.addEventListener("drop",e=>{
+e.preventDefault()
+createForme(dragType,e.offsetX,e.offsetY)
+})
+
+/* support tactile palette */
+
+document.querySelectorAll(".palette-item").forEach(item=>{
+
+    item.addEventListener("touchstart",e=>{
+
+        dragType=item.dataset.type
+
+    })
+
+    item.addEventListener("touchend",e=>{
+
+        if(!dragType) return
+
+        let rect=plan.getBoundingClientRect()
+
+        createForme(
+            dragType,
+            rect.width/2,
+            rect.height/2
+        )
+
+        dragType=null
+
+    })
+
+})
+
+/* créer forme */
+
+function createForme(type,x,y){
+
+let el=document.createElement("div")
+
+el.classList.add("forme",type)
+
+if(type=="croix")el.innerHTML="✚"
+if(type=="tournesol")el.innerHTML="🌻"
+
+el.style.left=x+"px"
+el.style.top=y+"px"
+
+enableMove(el)
+
+el.onclick=()=>selected=el
+
+el.ondblclick=()=>el.remove()
+
+plan.appendChild(el)
+
+}
+
+/* déplacement souris + tactile */
+
+function enableMove(el){
+
+el.addEventListener("mousedown",startMove)
+el.addEventListener("touchstart",startMove)
+
+}
+
+function startMove(e){
+
+active=e.target
+selected=active
+
+let rect=active.getBoundingClientRect()
+
+if(e.touches){
+offsetX=e.touches[0].clientX-rect.left
+offsetY=e.touches[0].clientY-rect.top
+}else{
+offsetX=e.offsetX
+offsetY=e.offsetY
+}
+
+document.addEventListener("mousemove",move)
+document.addEventListener("touchmove",move)
+
+document.addEventListener("mouseup",stopMove)
+document.addEventListener("touchend",stopMove)
+
+}
+
+function move(e){
+
+    if(!active)return
+
+    let rect=plan.getBoundingClientRect()
+
+    let clientX=e.touches ? e.touches[0].clientX : e.clientX
+    let clientY=e.touches ? e.touches[0].clientY : e.clientY
+
+    let x=clientX-rect.left-offsetX
+    let y=clientY-rect.top-offsetY
+
+    /* limite dans le plan */
+
+    x=Math.max(0,Math.min(rect.width-60,x))
+    y=Math.max(0,Math.min(rect.height-60,y))
+
+    /* grille */
+
+    x=Math.round(x/40)*40
+    y=Math.round(y/40)*40
+
+    active.style.left=x+"px"
+    active.style.top=y+"px"
+
+}
+
+function stopMove(){
+
+active=null
+
+document.removeEventListener("mousemove",move)
+document.removeEventListener("touchmove",move)
+
+}
+
+/* rotation */
+
+function rotatePiece(){
+
+if(!selected)return
+
+let rot=selected.dataset.rot||0
+rot=parseInt(rot)+45
+
+selected.dataset.rot=rot
+selected.style.transform="rotate("+rot+"deg)"
+
+}
+
+/* taille */
+
+function resizePiece(scale){
+
+if(!selected)return
+
+let s=selected.dataset.scale||1
+s=parseFloat(s)*scale
+
+selected.dataset.scale=s
+selected.style.transform="scale("+s+") rotate("+(selected.dataset.rot||0)+"deg)"
+
+}
+
+/* sauvegarde */
+
+function savePlan(){
+
+let data=[]
+
+document.querySelectorAll(".forme").forEach(el=>{
+
+data.push({
+type:[...el.classList].find(c=>["rond","rectangle","triangle","croix","tournesol"].includes(c)),
+x:el.style.left,
+y:el.style.top,
+rot:el.dataset.rot||0,
+scale:el.dataset.scale||1
+})
+
+})
+
+localStorage.setItem("planAvance",JSON.stringify(data))
+
+alert("Plan sauvegardé")
+
+}
+
+/* chargement */
+
+function loadPlan(){
+
+plan.innerHTML=""
+
+let data=JSON.parse(localStorage.getItem("planAvance")||"[]")
+
+data.forEach(f=>{
+
+createForme(f.type,0,0)
+
+let el=plan.lastChild
+
+el.style.left=f.x
+el.style.top=f.y
+
+if(f.rot){
+el.dataset.rot=f.rot
+}
+
+if(f.scale){
+el.dataset.scale=f.scale
+}
+
+el.style.transform="scale("+f.scale+") rotate("+f.rot+"deg)"
+
+})
+
+}
+
+/* export image */
+
+function exportImage(){
+
+html2canvas(plan).then(canvas=>{
+
+let link=document.createElement("a")
+
+link.download="plan.png"
+
+link.href=canvas.toDataURL()
+
+link.click()
+
+})
+
+}
+
+</script>
+
+</body>
+</html>
